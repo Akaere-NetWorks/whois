@@ -8,3 +8,4 @@ authors = ["Pysio"]
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
+colored = "2.0"
