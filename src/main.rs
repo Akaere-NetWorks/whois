@@ -43,6 +43,10 @@ struct Cli {
     /// Disable colored output
     #[arg(long)]
     no_color: bool,
+    
+    /// Easter egg: MTF flag colors (hidden option)
+    #[arg(long, hide = true)]
+    mtf: bool,
 }
 
 fn main() -> Result<()> {
@@ -50,6 +54,7 @@ fn main() -> Result<()> {
     let port = args.port;
     let verbose = args.verbose;
     let use_color = !args.no_color;
+    let mtf_colors = args.mtf;
     
     if verbose {
         println!("{}: {}", "Query".bright_green(), args.domain.bright_white());
@@ -109,7 +114,9 @@ fn main() -> Result<()> {
             if !output.trim().is_empty() {
                 println!("{}", if use_color { 
                     // Detect and apply appropriate colorization based on format
-                    if is_bgp_tools_format(&output) {
+                    if mtf_colors {
+                        colorize_mtf_output(&output)
+                    } else if is_bgp_tools_format(&output) {
                         colorize_bgptools_output(&output)
                     } else {
                         colorize_ripe_output(&output)
@@ -491,6 +498,33 @@ fn colorize_bgptools_output(output: &str) -> String {
         }
         
         colored_lines.push(colored_fields.join(" | "));
+    }
+    
+    colored_lines.join("\n")
+}
+
+// MTF flag coloring function
+fn colorize_mtf_output(output: &str) -> String {
+    let mut colored_lines = Vec::new();
+    let mut line_count = 0;
+    
+    for line in output.lines() {
+        if line.trim().is_empty() {
+            colored_lines.push(line.to_string());
+            continue;
+        }
+        
+        // Alternate colors in trans flag pattern (blue, pink, white, pink, blue)
+        match line_count % 5 {
+            0 => colored_lines.push(line.truecolor(91, 207, 250).to_string()), // Blue #5BCFFA
+            1 => colored_lines.push(line.truecolor(245, 171, 185).to_string()), // Pink #F5ABB9
+            2 => colored_lines.push(line.truecolor(255, 255, 255).to_string()), // Pure White #FFFFFF
+            3 => colored_lines.push(line.truecolor(245, 171, 185).to_string()), // Pink #F5ABB9
+            4 => colored_lines.push(line.truecolor(91, 207, 250).to_string()), // Blue #5BCFFA
+            _ => unreachable!(),
+        }
+        
+        line_count += 1;
     }
     
     colored_lines.join("\n")
