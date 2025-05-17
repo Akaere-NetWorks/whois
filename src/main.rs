@@ -257,21 +257,52 @@ fn colorize_ripe_output(output: &str) -> String {
                 let value = parts[1].trim();
                 
                 // Color field name (left side of colon)
-                let colored_field = match field {
+                let colored_field = match field.to_lowercase().as_str() {
                     // Main fields - cyan
                     "aut-num" | "as-block" | "inet6num" | "inetnum" | "route" | "route6" | "netname" =>
                         field.bright_cyan().to_string(),
                     
+                    // Domain name specific fields - bright cyan
+                    "domain" | "domain name" =>
+                        field.bright_cyan().bold().to_string(),
+                    
+                    // DNS servers - yellow
+                    "nserver" | "name server" | "nameserver" | "name servers" =>
+                        field.yellow().bold().to_string(),
+                    
+                    // Domain status fields - bright yellow
+                    "domain status" | "status" =>
+                        field.bright_yellow().to_string(),
+                    
+                    // Registrar information - bright blue
+                    "registrar" | "sponsoring registrar" | "registrar iana id" | "reseller" =>
+                        field.bright_blue().to_string(),
+                    
+                    // Registry specific - blue
+                    "registry domain id" | "registrar whois server" | "registrar url" =>
+                        field.blue().to_string(),
+                    
+                    // Dates for domains - magenta
+                    "creation date" | "created" | "created on" | "registration date" |
+                    "updated date" | "last modified" | "last update" |
+                    "expiration date" | "expiry date" | "registry expiry date" | "registrar registration expiration date" =>
+                        field.bright_magenta().to_string(),
+                    
+                    // Privacy/WHOIS protection - red
+                    "privacy" | "whois privacy" | "domain privacy" =>
+                        field.bright_red().to_string(),
+                    
                     // Name fields - green
-                    "as-name" | "org-name" | "role" | "person" => 
+                    "as-name" | "org-name" | "role" | "person" | "registrant name" | "admin name" | "tech name" =>
                         field.bright_green().to_string(),
                     
                     // Organization fields - yellow
-                    "org" | "organisation" | "org-type" =>
+                    "org" | "organisation" | "org-type" | "registrant organization" | "registrant" =>
                         field.yellow().to_string(),
                     
                     // Contact fields - green
-                    "admin-c" | "tech-c" | "abuse-c" | "nic-hdl" | "abuse-mailbox" =>
+                    "admin-c" | "tech-c" | "abuse-c" | "nic-hdl" | "abuse-mailbox" |
+                    "registrant contact" | "admin contact" | "technical contact" | "billing contact" =>
                         field.green().to_string(),
                     
                     // Maintainer fields - blue
@@ -283,51 +314,76 @@ fn colorize_ripe_output(output: &str) -> String {
                         field.magenta().to_string(),
                     
                     // Status fields - yellow
-                    "status" | "sponsoring-org" =>
+                    "sponsoring-org" =>
                         field.bright_yellow().to_string(),
                     
                     // Dates - cyan
-                    "created" | "last-modified" | "changed" =>
+                    "changed" =>
                         field.bright_cyan().to_string(),
                     
                     // Location - white
-                    "country" | "address" | "source" =>
+                    "country" | "address" | "source" | "registrant country" | "admin country" | "tech country" =>
                         field.bright_white().to_string(),
                     
                     // Communication - blue
-                    "e-mail" | "email" | "phone" =>
+                    "e-mail" | "email" | "phone" | "registrant email" | "admin email" | "tech email" =>
                         field.blue().to_string(),
+                    
+                    // DNSSEC - magenta
+                    "dnssec" | "ds record" =>
+                        field.magenta().bold().to_string(),
                     
                     // Default for other fields
                     _ => field.white().to_string(),
                 };
                 
                 // Color value based on content and context
-                let colored_value = if field == "aut-num" {
+                let colored_value = if field.to_lowercase() == "domain" || field.to_lowercase() == "domain name" {
+                    // Domain names
+                    value.bright_white().bold().to_string()
+                } else if field.to_lowercase() == "aut-num" {
                     // AS Numbers for aut-num field
                     value.bright_red().bold().to_string()
-                } else if field == "status" {
+                } else if field.to_lowercase() == "status" || field.to_lowercase() == "domain status" {
                     // Status values
                     match value.to_uppercase().as_str() {
-                        "ASSIGNED" => value.bright_green().to_string(),
-                        "ALLOCATED" => value.bright_green().to_string(),
+                        "ASSIGNED" | "ALLOCATED" => value.bright_green().to_string(),
                         "AVAILABLE" => value.bright_cyan().to_string(),
                         "RESERVED" => value.yellow().to_string(),
-                        _ => value.bright_yellow().to_string(),
+                        "CLIENT DELETE PROHIBITED" | "CLIENT TRANSFER PROHIBITED" | "CLIENT UPDATE PROHIBITED" =>
+                            value.bright_yellow().to_string(),
+                        "INACTIVE" | "PENDING DELETE" => value.bright_red().to_string(),
+                        "OK" | "ACTIVE" | "CLIENT OK" => value.bright_green().to_string(),
+                        _ => value.bright_yellow().to_string()
                     }
-                } else if field == "source" {
+                } else if field.to_lowercase() == "source" {
                     // Source registry
                     value.bright_blue().to_string()
-                } else if field == "country" {
+                } else if field.to_lowercase() == "country" || field.to_lowercase().contains("country") {
                     // Country code
                     value.yellow().to_string()
-                } else if field.contains("modified") || field.contains("created") || field.contains("changed") {
+                } else if field.to_lowercase().contains("name server") || field.to_lowercase().contains("nserver") || field.to_lowercase() == "nameserver" {
+                    // Name servers
+                    value.bright_green().to_string()
+                } else if field.to_lowercase().contains("registrar") {
+                    // Registrar information
+                    value.bright_blue().bold().to_string()
+                } else if field.to_lowercase().contains("dnssec") {
+                    // DNSSEC status
+                    if value.to_lowercase().contains("signed") || value.to_lowercase().contains("yes") {
+                        value.bright_green().to_string()
+                    } else {
+                        value.bright_red().to_string()
+                    }
+                } else if field.to_lowercase().contains("date") || field.to_lowercase().contains("created") || 
+                         field.to_lowercase().contains("changed") || field.to_lowercase().contains("expir") || 
+                         field.to_lowercase().contains("update") {
                     // Dates
                     value.bright_magenta().to_string()
                 } else if value.contains('@') {
                     // Email addresses
                     value.bright_yellow().to_string()
-                } else if field == "phone" {
+                } else if field.to_lowercase().contains("phone") {
                     // Phone numbers
                     value.bright_white().to_string()
                 } else if value.starts_with("AS") && value[2..].chars().all(|c| c.is_digit(10)) {
@@ -357,10 +413,10 @@ fn colorize_ripe_output(output: &str) -> String {
                     } else {
                         value.white().to_string()
                     }
-                } else if field == "as-name" || field == "org-name" || field == "netname" {
+                } else if field.to_lowercase() == "as-name" || field.to_lowercase() == "org-name" || field.to_lowercase() == "netname" {
                     // Names
                     value.bright_white().bold().to_string()
-                } else if field == "role" || field == "person" {
+                } else if field.to_lowercase() == "role" || field.to_lowercase() == "person" || field.to_lowercase().contains("registrant name") {
                     // Person/role names
                     value.bright_green().bold().to_string()
                 } else if field.ends_with("-c") {
