@@ -10,3 +10,8 @@ license = "AGPL-3.0"
 clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 colored = "2.0"
+
+[profile.release]
+lto = true
+opt-level = "z"
+strip = true
