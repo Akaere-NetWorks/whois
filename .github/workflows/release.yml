@@ -24,14 +24,24 @@ jobs:
       - name: Build
         run: cargo build --release
 
-      - name: Determine artifact name
-        id: artifact_name
+      - name: Determine artifact name (Windows)
+        if: runner.os == 'Windows'
+        id: artifact_name_win
+        shell: pwsh
+        run: |
+          $osName = "${{ matrix.os }}"
+          $ext = ".exe"
+          $artifact = "whois-$osName$ext"
+          Copy-Item target/release/whois.exe $artifact
+          echo "artifact=$artifact" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Determine artifact name (Non-Windows)
+        if: runner.os != 'Windows'
+        id: artifact_name_unix
+        shell: bash
         run: |
           OS_NAME="${{ matrix.os }}"
           EXT=""
-          case "$OS_NAME" in
-            windows-*) EXT=".exe" ;;
-          esac
           ARTIFACT="whois-$OS_NAME$EXT"
           cp target/release/whois$EXT $ARTIFACT
           echo "artifact=$ARTIFACT" >> $GITHUB_OUTPUT
@@ -40,7 +50,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: whois-${{ matrix.os }}
-          path: ${{ steps.artifact_name.outputs.artifact }}
+          path: ${{ steps.artifact_name_win.outputs.artifact || steps.artifact_name_unix.outputs.artifact }}
 
   deb:
     name: Build .deb package on ${{ matrix.os }}
