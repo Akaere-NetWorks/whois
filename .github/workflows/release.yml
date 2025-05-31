@@ -24,11 +24,23 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Determine artifact name
+        id: artifact_name
+        run: |
+          OS_NAME="${{ matrix.os }}"
+          EXT=""
+          case "$OS_NAME" in
+            windows-*) EXT=".exe" ;;
+          esac
+          ARTIFACT="whois-$OS_NAME$EXT"
+          cp target/release/whois$EXT $ARTIFACT
+          echo "artifact=$ARTIFACT" >> $GITHUB_OUTPUT
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: whois-${{ matrix.os }}
-          path: target/release/whois
+          path: ${{ steps.artifact_name.outputs.artifact }}
 
   deb:
     name: Build .deb package on ${{ matrix.os }}
@@ -50,11 +62,21 @@ jobs:
       - name: Build .deb package
         run: cargo deb
 
+      - name: Rename .deb package
+        id: deb_name
+        run: |
+          OS_NAME="${{ matrix.os }}"
+          DEB_ORIG=$(ls target/debian/*.deb | head -n1)
+          DEB_BASE=$(basename "$DEB_ORIG" .deb)
+          DEB_NEW="${DEB_BASE}-${OS_NAME}.deb"
+          mv "$DEB_ORIG" "target/debian/$DEB_NEW"
+          echo "debfile=target/debian/$DEB_NEW" >> $GITHUB_OUTPUT
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: whois-deb-${{ matrix.os }}
-          path: target/debian/*.deb
+          path: ${{ steps.deb_name.outputs.debfile }}
 
   release:
     name: Create Release
