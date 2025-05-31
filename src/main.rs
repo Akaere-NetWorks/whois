@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use colored::*;
 
-use whois::{Cli, WhoisQuery, OutputColorizer, ColorScheme};
+use whois::{Cli, WhoisQuery, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response};
 
 fn main() -> Result<()> {
     let args = Cli::parse();
@@ -44,16 +44,23 @@ fn main() -> Result<()> {
     
     // Handle output
     if !result.response.trim().is_empty() {
-        let output = if args.use_color() {
+        let mut output = result.response.clone();
+        
+        // Apply hyperlinks if enabled and response is from any RIR
+        if args.use_hyperlinks() && is_rir_response(&output) {
+            let hyperlink_processor = RirHyperlinkProcessor::new();
+            output = hyperlink_processor.process(&output);
+        }
+        
+        // Apply colorization
+        if args.use_color() {
             let scheme = if args.use_mtf_colors() {
                 ColorScheme::Mtf
             } else {
-                OutputColorizer::detect_scheme(&result.response)
+                OutputColorizer::detect_scheme(&output)
             };
-            OutputColorizer::colorize(&result.response, scheme)
-        } else {
-            result.response
-        };
+            output = OutputColorizer::colorize(&output, scheme);
+        }
         
         println!("{}", output);
         Ok(())

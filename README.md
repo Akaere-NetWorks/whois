@@ -8,6 +8,12 @@ A simple, cross-platform WHOIS query tool with colorized output and advanced fea
 - **Improved Colorization**: Enhanced color schemes with better detection and more accurate field-specific coloring
 - **Automatic WHOIS server resolution** through IANA
 - **Smart Server Selection**: Intelligent server selection based on query type and configuration
+- **Color Output**: Beautiful, readable output with syntax highlighting
+- **Environment Variable Support**: Configure default server via `WHOIS_SERVER`
+- **Multi-platform**: Works on Linux, macOS, and Windows
+- **DN42 Support**: Special handling for DN42 ASN queries with `--dn42` flag
+- **BGP Tools Integration**: Enhanced ASN queries with `--bgptools` flag
+- **Terminal Hyperlinks**: Clickable links for all RIR database results (enabled by default)
 - Query WHOIS information for domains or IP addresses
 - Support for custom WHOIS servers (bypassing IANA lookup)
 - Support for DN42 network queries via lantian.pub
@@ -16,8 +22,6 @@ A simple, cross-platform WHOIS query tool with colorized output and advanced fea
 - Intelligent format detection and colorization for RIPE and BGP.tools formats
 - Custom port number support
 - Verbose output mode
-- **Environment Variable Support**: Use `WHOIS_SERVER` environment variable for default server
-- **Better Error Handling**: Improved error messages and timeout management
 
 ## Code Structure
 
@@ -47,63 +51,78 @@ cargo install --path .
 
 ## Usage
 
+### Basic Usage
+
 ```bash
-# Basic usage (with automatic IANA lookup)
+# Query a domain
 whois example.com
 
-# Using a custom WHOIS server (bypassing IANA lookup)
-whois example.com --server whois.verisign-grs.com
+# Query an IP address  
+whois 8.8.8.8
 
-# Query DN42 network information
-whois 172.22.0.1 --42
+# Query an ASN
+whois AS15169
 
-# Automatic DN42 detection
-whois AS4242420000
-# ^ This will automatically use the DN42 server without needing the --42 flag
+# Use specific server
+whois -s whois.ripe.net AS3333
 
-# Query BGP information from bgp.tools
-whois AS64496 --bgptools
+# DN42 queries
+whois --dn42 AS4242420000
 
-# Using a custom port
-whois example.com --port 4343
+# BGP Tools enhanced queries
+whois --bgptools AS15169
 
-# Display verbose output (shows lookup process)
-whois example.com --verbose
+# Hyperlinks are enabled by default for RIR results  
+whois AS3333
 
-# Disable colored output
-whois example.com --no-color
-
-# Show help information
-whois --help
+# Disable hyperlinks if needed
+whois --no-hyperlinks AS3333
 ```
 
-### Specify WHOIS server via CLI
+### Advanced Features
+
+#### Terminal Hyperlinks
+
+Hyperlinks are **enabled by default** for all Regional Internet Registry (RIR) database results. The tool automatically detects RIR responses using the `source:` field and creates appropriate hyperlinks using RIPE's Global Resources Service:
+
 ```bash
-whois -s whois.example.net example.com
+# Hyperlinks are enabled by default
+whois AS3333
+
+# Combine with verbose mode for detailed output
+whois --verbose AS3333
+
+# Disable hyperlinks if needed
+whois --no-hyperlinks AS3333
 ```
 
-### Specify WHOIS server via environment variable
-If `-s/--server` is not provided, the tool will check the `WHOIS_SERVER` environment variable.
+**Key Features:**
+- **Multi-RIR Support**: Handles responses containing data from multiple RIRs
+- **Source-based Detection**: Uses `source:` fields for accurate RIR identification
+- **Global Resources**: All hyperlinks use RIPE's Global Resources Service for unified access
+- **Block Processing**: Splits multi-RIR responses into appropriate blocks for targeted linking
 
-#### Linux/macOS:
-```bash
-export WHOIS_SERVER=whois.example.net
-whois example.com
-```
+**Supported RIRs:**
+- **RIPE NCC** (Europe, Middle East, Central Asia) - `source: RIPE`
+- **ARIN** (North America) - `source: ARIN`
+- **APNIC** (Asia Pacific) - `source: APNIC`
+- **LACNIC** (Latin America and Caribbean) - `source: LACNIC`
+- **AFRINIC** (Africa) - `source: AFRINIC`
 
-#### Windows (cmd):
-```bat
-set WHOIS_SERVER=whois.example.net
-whois example.com
-```
+**Supported Terminals:**
+- Most modern terminals support OSC 8 hyperlinks
+- Automatically detected: GNOME Terminal, iTerm2, Windows Terminal, Alacritty, Kitty, WezTerm, foot
+- VTE-based terminals (most Linux terminals)
+- Works on both Linux/macOS and Windows (including PowerShell)
 
-#### Windows (PowerShell):
-```powershell
-$env:WHOIS_SERVER="whois.example.net"
-whois example.com
-```
-
-If neither is set, the tool uses the default behavior (IANA referral or built-in default).
+**Clickable Elements:**
+- ASN numbers (aut-num, origin fields)
+- IP networks (inetnum, inet6num, route, route6)
+- Organizations (organisation, org)
+- Contacts (nic-hdl, admin-c, tech-c)  
+- Maintainers (mntner, mnt-by)
+- Domain objects
+- RIR-specific identifiers (NetRange, CIDR, OrgId)
 
 ## Format-Specific Colorization
 
