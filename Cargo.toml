@@ -4,6 +4,7 @@ version = "0.1.1"
 edition = "2021"
 description = "A simple WHOIS query tool"
 authors = ["Pysio"]
+license = "AGPL-3.0"
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
