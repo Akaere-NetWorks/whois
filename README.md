@@ -4,7 +4,10 @@ A simple, cross-platform WHOIS query tool with colorized output and advanced fea
 
 ## Features
 
-- Automatic WHOIS server resolution through IANA
+- **Modular Architecture**: Clean, maintainable code structure with separate modules for CLI, query handling, server selection, and colorization
+- **Improved Colorization**: Enhanced color schemes with better detection and more accurate field-specific coloring
+- **Automatic WHOIS server resolution** through IANA
+- **Smart Server Selection**: Intelligent server selection based on query type and configuration
 - Query WHOIS information for domains or IP addresses
 - Support for custom WHOIS servers (bypassing IANA lookup)
 - Support for DN42 network queries via lantian.pub
@@ -13,7 +16,19 @@ A simple, cross-platform WHOIS query tool with colorized output and advanced fea
 - Intelligent format detection and colorization for RIPE and BGP.tools formats
 - Custom port number support
 - Verbose output mode
-- **NEW:** Support for specifying the default WHOIS server via environment variable
+- **Environment Variable Support**: Use `WHOIS_SERVER` environment variable for default server
+- **Better Error Handling**: Improved error messages and timeout management
+
+## Code Structure
+
+The codebase is organized into the following modules:
+
+- **`src/cli.rs`**: Command-line interface and argument parsing
+- **`src/query.rs`**: WHOIS query logic and network communication
+- **`src/servers.rs`**: Server selection and configuration
+- **`src/colorize.rs`**: Output colorization with multiple schemes
+- **`src/lib.rs`**: Library interface and module exports
+- **`src/main.rs`**: Main application entry point
 
 ## How It Works
 
