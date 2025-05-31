@@ -1,6 +1,6 @@
 # WHOIS Query Tool
 
-A simple command-line WHOIS query tool with smart WHOIS server resolution.
+A simple, cross-platform WHOIS query tool with colorized output and advanced features.
 
 ## Features
 
@@ -13,6 +13,7 @@ A simple command-line WHOIS query tool with smart WHOIS server resolution.
 - Intelligent format detection and colorization for RIPE and BGP.tools formats
 - Custom port number support
 - Verbose output mode
+- **NEW:** Support for specifying the default WHOIS server via environment variable
 
 ## How It Works
 
@@ -60,6 +61,34 @@ whois example.com --no-color
 # Show help information
 whois --help
 ```
+
+### Specify WHOIS server via CLI
+```bash
+whois -s whois.example.net example.com
+```
+
+### Specify WHOIS server via environment variable
+If `-s/--server` is not provided, the tool will check the `WHOIS_SERVER` environment variable.
+
+#### Linux/macOS:
+```bash
+export WHOIS_SERVER=whois.example.net
+whois example.com
+```
+
+#### Windows (cmd):
+```bat
+set WHOIS_SERVER=whois.example.net
+whois example.com
+```
+
+#### Windows (PowerShell):
+```powershell
+$env:WHOIS_SERVER="whois.example.net"
+whois example.com
+```
+
+If neither is set, the tool uses the default behavior (IANA referral or built-in default).
 
 ## Format-Specific Colorization
 

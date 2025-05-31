@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::Parser;
 use colored::*;
+use std::env;
 
 const IANA_WHOIS_SERVER: &str = "whois.iana.org";
 const DEFAULT_WHOIS_SERVER: &str = "whois.ripe.net";
@@ -56,6 +57,14 @@ fn main() -> Result<()> {
     let use_color = !args.no_color;
     let mtf_colors = args.mtf;
     
+    // Check for WHOIS_SERVER environment variable if --server is not provided
+    // This works on both Linux and Windows
+    let env_server = if args.server.is_none() {
+        env::var("WHOIS_SERVER").ok()
+    } else {
+        None
+    };
+    
     if verbose {
         println!("{}: {}", "Query".bright_green(), args.domain.bright_white());
     }
@@ -100,6 +109,15 @@ fn main() -> Result<()> {
                 port.to_string().yellow());
         }
         query_whois(&args.domain, server, port)
+    } else if let Some(env_server) = env_server {
+        // Use WHOIS_SERVER from environment variable
+        if verbose {
+            println!("{}: {}:{} (from WHOIS_SERVER env)", 
+                "Server".bright_cyan(), 
+                env_server.yellow(), 
+                port.to_string().yellow());
+        }
+        query_whois(&args.domain, &env_server, port)
     } else {
         // Default behavior: query through IANA
         let (final_result, used_server) = query_with_iana_referral(&args.domain, port, verbose, use_color)?;
