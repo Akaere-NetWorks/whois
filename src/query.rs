@@ -3,6 +3,7 @@ use std::net::TcpStream;
 use std::time::Duration;
 use anyhow::{Context, Result};
 use crate::servers::{WhoisServer, ServerSelector, DEFAULT_WHOIS_SERVER};
+use crate::protocol::WhoisColorProtocol;
 
 const TIMEOUT_SECONDS: u64 = 10;
 
@@ -10,11 +11,24 @@ const TIMEOUT_SECONDS: u64 = 10;
 pub struct QueryResult {
     pub response: String,
     pub server_used: WhoisServer,
+    pub server_colored: bool,
 }
 
 impl QueryResult {
     pub fn new(response: String, server_used: WhoisServer) -> Self {
-        Self { response, server_used }
+        Self { 
+            response, 
+            server_used,
+            server_colored: false,
+        }
+    }
+
+    pub fn new_with_color(response: String, server_used: WhoisServer, server_colored: bool) -> Self {
+        Self { 
+            response, 
+            server_used,
+            server_colored,
+        }
     }
 }
 
@@ -112,5 +126,93 @@ impl WhoisQuery {
         );
 
         self.query_with_referral(domain, &server)
+    }
+
+    /// Query with color protocol support
+    pub fn query_with_color_protocol(
+        &self,
+        domain: &str,
+        use_dn42: bool,
+        use_bgptools: bool,
+        use_server_color: bool,
+        explicit_server: Option<&str>,
+        port: u16,
+        preferred_color_scheme: Option<&str>,
+    ) -> Result<QueryResult> {
+        let server = ServerSelector::select_server(
+            domain,
+            use_dn42,
+            use_bgptools,
+            explicit_server,
+            port,
+        );
+
+        if use_server_color {
+            self.query_with_color_protocol_impl(domain, &server, preferred_color_scheme)
+        } else {
+            self.query_with_referral(domain, &server)
+        }
+    }
+
+    /// Implementation of color protocol query
+    fn query_with_color_protocol_impl(
+        &self,
+        domain: &str,
+        server: &WhoisServer,
+        preferred_color_scheme: Option<&str>,
+    ) -> Result<QueryResult> {
+        let protocol = WhoisColorProtocol;
+        
+        if server.name == "IANA" {
+            // Handle IANA referral first
+            if self.verbose {
+                println!("Querying IANA at: {}", server.address());
+            }
+
+            let iana_response = self.query_direct(domain, server)?;
+            let whois_server_host = ServerSelector::extract_whois_server(&iana_response)
+                .unwrap_or_else(|| DEFAULT_WHOIS_SERVER.to_string());
+            
+            let final_server = WhoisServer::custom(whois_server_host, server.port);
+            
+            if self.verbose {
+                if final_server.host != DEFAULT_WHOIS_SERVER {
+                    println!("IANA referred to: {}", final_server.host);
+                } else {
+                    println!("No referral found, using default: {}", DEFAULT_WHOIS_SERVER);
+                }
+            }
+
+            // Try color protocol with final server
+            return self.try_color_protocol_query(domain, &final_server, &protocol, preferred_color_scheme);
+        } else {
+            // Direct server query with color protocol
+            return self.try_color_protocol_query(domain, server, &protocol, preferred_color_scheme);
+        }
+    }
+
+    /// Try color protocol query with server-side rendering preferred
+    fn try_color_protocol_query(
+        &self,
+        domain: &str,
+        server: &WhoisServer,
+        protocol: &WhoisColorProtocol,
+        preferred_color_scheme: Option<&str>,
+    ) -> Result<QueryResult> {
+        // Probe server capabilities
+        let capabilities = protocol.probe_capabilities(&server.address(), self.verbose)
+            .unwrap_or_default(); // Use default (no support) if probe fails
+
+        // Perform query based on capabilities
+        let response = protocol.query_with_color(
+            &server.address(),
+            domain,
+            &capabilities,
+            preferred_color_scheme,
+            self.verbose
+        )?;
+
+        let server_colored = protocol.is_server_colored(&response);
+        Ok(QueryResult::new_with_color(response, server.clone(), server_colored))
     }
 } 

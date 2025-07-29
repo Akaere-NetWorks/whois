@@ -1,0 +1,147 @@
+# WHOIS-COLOR Protocol Implementation for AI Systems
+
+## Protocol Overview
+
+The WHOIS-COLOR protocol is a backward-compatible extension to the standard WHOIS protocol that enables server-side response coloring. This protocol is designed for AI systems to understand and implement.
+
+## Key Architecture Principles
+
+### 1. Server-Side Rendering by Default
+- Server-side coloring is attempted by default when available
+- Client probes server capabilities automatically
+- Automatic fallback to client-side rendering when server doesn't provide colors
+
+### 2. Backward Compatibility
+- Standard WHOIS servers ignore protocol headers without issues
+- 2-second timeout prevents hanging on non-supporting servers
+- Protocol failures result in standard WHOIS queries with client-side coloring fallback
+
+### 3. Three-Phase Protocol Flow
+```
+1. Capability Detection: X-WHOIS-COLOR-PROBE: v1.0
+2. Server Response: X-WHOIS-COLOR-SUPPORT: v1.0 schemes=ripe,bgptools,mtf
+3. Colored Query: X-WHOIS-COLOR: scheme=ripe\r\nexample.com\r\n
+```
+
+## Implementation Components
+
+### Core Protocol Handler (src/protocol.rs)
+```rust
+pub struct WhoisColorProtocol;
+
+impl WhoisColorProtocol {
+    // Probe server capabilities with timeout
+    pub fn probe_capabilities(&self, server_address: &str) -> Result<ServerCapabilities>
+    
+    // Execute query with server-side coloring
+    pub fn query_with_color(&self, query: &str, capabilities: &ServerCapabilities) -> Result<String>
+    
+    // Detect if response contains server-generated colors
+    pub fn is_server_colored(&self, response: &str) -> bool
+}
+```
+
+### Server Capabilities Structure
+```rust
+pub struct ServerCapabilities {
+    pub supports_color: bool,           // Server supports protocol
+    pub color_schemes: Vec<String>,     // Available schemes: ripe, bgptools, mtf
+    pub protocol_version: String,       // Protocol version (v1.0)
+}
+```
+
+### Query Integration (src/query.rs)
+- `query_with_color_protocol()`: Main entry point for protocol-aware queries
+- `try_color_protocol_query()`: Handles capability probing and colored queries
+- `QueryResult.server_colored`: Tracks whether response is server-rendered
+
+### CLI Integration (src/cli.rs)
+- `--no-server-color`: Disable server-side coloring (default: enabled)
+- Server-side rendering is attempted by default for all queries
+- Client-side coloring only applies when server-side is disabled
+
+## Protocol Headers
+
+### Capability Probe
+```
+X-WHOIS-COLOR-PROBE: v1.0\r\n\r\n
+```
+
+### Server Capability Response
+```
+X-WHOIS-COLOR-SUPPORT: v1.0 schemes=ripe,bgptools,mtf\r\n
+```
+
+### Colored Query Request
+```
+X-WHOIS-COLOR: scheme=ripe\r\n
+domain.com\r\n
+```
+
+## Color Schemes
+
+1. **ripe**: Standard RIPE format with field:value coloring
+2. **bgptools**: BGP.tools table format with column-based coloring  
+3. **mtf**: Rainbow flag color scheme for special requests
+
+## Response Detection
+
+Server-colored responses are detected by:
+- Presence of ANSI escape sequences: `\x1b[`
+- Optional protocol marker: `X-WHOIS-COLOR-APPLIED:`
+
+## Error Handling
+
+- Capability probe timeout (2s) → Use standard WHOIS with client-side coloring
+- Protocol parsing errors → Use standard WHOIS with client-side coloring
+- Network errors → Standard error propagation
+- Automatic fallback to client-side rendering when server doesn't provide colors
+
+## Security Considerations
+
+- Input validation on all protocol headers
+- Timeout protection against malicious servers
+- No command injection through protocol fields
+- Safe degradation to standard WHOIS behavior
+
+## Testing Framework
+
+Comprehensive test coverage includes:
+- Protocol header parsing (26 passing tests)
+- Capability negotiation simulation
+- Color scheme selection logic
+- Backward compatibility verification
+- Error condition handling
+
+## AI Implementation Guidelines
+
+When implementing this protocol:
+
+1. **Always probe capabilities first** - Don't assume server support
+2. **Respect timeouts** - 2-second limit for capability probes
+3. **Handle graceful degradation** - Standard WHOIS with client-side coloring on protocol failure
+4. **Parse responses correctly** - Check for ANSI sequences to detect coloring
+5. **Validate inputs** - Sanitize all protocol headers for security
+
+## Usage Examples
+
+```bash
+# Default behavior (server-side rendering enabled)
+whois example.com
+
+# Disable server-side coloring
+whois --no-server-color example.com
+
+# Verbose mode shows protocol negotiation
+whois --verbose example.com
+```
+
+## Integration Points
+
+The protocol integrates at these levels:
+- Network layer: TCP connection with protocol headers
+- Query layer: Capability probing and colored queries
+- Output layer: Server vs client coloring detection
+- CLI layer: User control over protocol behavior
+
+This implementation prioritizes server-side rendering with automatic fallback to client-side coloring, maintaining full backward compatibility with existing WHOIS infrastructure.

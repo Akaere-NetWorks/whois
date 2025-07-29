@@ -41,6 +41,10 @@ pub struct Cli {
     /// Disable hyperlinks in terminal output (hyperlinks are enabled by default)
     #[arg(long, help = "Disable clickable hyperlinks for RIR database results")]
     pub no_hyperlinks: bool,
+
+    /// Disable server-side coloring protocol (server-side rendering is default)
+    #[arg(long, help = "Disable server-side coloring and use client-side only")]
+    pub no_server_color: bool,
 }
 
 impl Cli {
@@ -68,6 +72,11 @@ impl Cli {
     pub fn use_hyperlinks(&self) -> bool {
         !self.no_hyperlinks
     }
+
+    /// Check if server-side coloring should be used (default: true)
+    pub fn use_server_color(&self) -> bool {
+        !self.no_server_color
+    }
 }
 
 #[cfg(test)]
@@ -85,6 +94,7 @@ mod tests {
             no_color: false,
             mtf: false,
             no_hyperlinks: false,
+            no_server_color: false,
         }
     }
 
@@ -175,6 +185,15 @@ mod tests {
     }
 
     #[test]
+    fn test_use_server_color() {
+        let mut cli = create_test_cli("example.com");
+        assert!(cli.use_server_color()); // Default is true
+        
+        cli.no_server_color = true;
+        assert!(!cli.use_server_color());
+    }
+
+    #[test]
     fn test_all_flags_together() {
         let mut cli = create_test_cli("AS4242420000");
         cli.dn42 = true;
@@ -183,6 +202,7 @@ mod tests {
         cli.mtf = true;
         cli.no_hyperlinks = true;
         cli.verbose = true;
+        cli.no_server_color = true;
         
         // DN42 should be true due to both flag and auto-detection
         assert!(cli.use_dn42());
@@ -190,6 +210,7 @@ mod tests {
         assert!(!cli.use_color());
         assert!(cli.use_mtf_colors());
         assert!(!cli.use_hyperlinks());
+        assert!(!cli.use_server_color());
         assert!(cli.verbose);
     }
 } 

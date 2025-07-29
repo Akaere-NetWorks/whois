@@ -243,15 +243,11 @@ fn split_response_by_source(response: &str) -> Vec<(String, &'static str)> {
 }
 
 /// Hyperlink processor for RIR database responses
-pub struct RirHyperlinkProcessor {
-    rir_urls: RirUrls,
-}
+pub struct RirHyperlinkProcessor;
 
 impl RirHyperlinkProcessor {
     pub fn new() -> Self {
-        Self {
-            rir_urls: RirUrls,
-        }
+        Self
     }
 
     /// Process RIR response and add hyperlinks - handles multi-RIR responses
@@ -292,7 +288,7 @@ impl RirHyperlinkProcessor {
         for (pattern_str, _) in patterns {
             if let Ok(pattern) = Regex::new(pattern_str) {
                 *processed = pattern.replace_all(processed, |caps: &regex::Captures| {
-                    let full_match = caps.get(0).unwrap().as_str();
+                    let _full_match = caps.get(0).unwrap().as_str();
                     let prefix = caps.get(1).unwrap().as_str();
                     let value = caps.get(2).unwrap().as_str();
                     

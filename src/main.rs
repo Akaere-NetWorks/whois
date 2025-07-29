@@ -23,13 +23,22 @@ fn main() -> Result<()> {
     // Create query handler
     let query_handler = WhoisQuery::new(args.verbose);
     
-    // Perform the query
-    let result = match query_handler.query(
+    // Determine preferred color scheme for server-side coloring
+    let preferred_scheme = if args.use_mtf_colors() {
+        Some("mtf")
+    } else {
+        None
+    };
+
+    // Perform the query with server-side rendering by default
+    let result = match query_handler.query_with_color_protocol(
         &args.domain,
         args.use_dn42(),
         args.use_bgptools(),
+        args.use_server_color(),
         args.server.as_deref(),
         args.port,
+        preferred_scheme,
     ) {
         Ok(result) => result,
         Err(err) => {
@@ -40,6 +49,9 @@ fn main() -> Result<()> {
     
     if args.verbose {
         println!("{}: {}", "Final server used".bright_cyan(), result.server_used.host.yellow());
+        if result.server_colored {
+            println!("{}: {}", "Server-side coloring".bright_green(), "enabled".bright_green());
+        }
     }
     
     // Handle output
@@ -52,14 +64,20 @@ fn main() -> Result<()> {
             output = hyperlink_processor.process(&output);
         }
         
-        // Apply colorization
-        if args.use_color() {
+        // Apply client-side coloring if server-side is disabled OR server didn't provide colors
+        if args.use_color() && (!args.use_server_color() || !result.server_colored) {
             let scheme = if args.use_mtf_colors() {
                 ColorScheme::Mtf
             } else {
                 OutputColorizer::detect_scheme(&output)
             };
             output = OutputColorizer::colorize(&output, scheme);
+            
+            if args.verbose && args.use_server_color() && !result.server_colored {
+                println!("{}", "Server coloring not available, using client-side coloring".bright_yellow());
+            }
+        } else if args.verbose && result.server_colored {
+            println!("{}", "Using server-provided coloring".bright_cyan());
         }
         
         println!("{}", output);
