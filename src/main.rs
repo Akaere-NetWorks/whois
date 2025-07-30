@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use colored::*;
 
-use whois::{Cli, WhoisQuery, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response};
+use whois::{Cli, WhoisQuery, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response, MarkdownRenderer};
 
 fn main() -> Result<()> {
     let args = Cli::parse();
@@ -30,12 +30,14 @@ fn main() -> Result<()> {
         None
     };
 
-    // Perform the query with server-side rendering by default
-    let result = match query_handler.query_with_color_protocol(
+    // Perform the query with enhanced protocol (v1.1) by default
+    let result = match query_handler.query_with_enhanced_protocol(
         &args.domain,
         args.use_dn42(),
         args.use_bgptools(),
         args.use_server_color(),
+        args.use_markdown(),
+        args.use_images(),
         args.server.as_deref(),
         args.port,
         preferred_scheme,
@@ -57,15 +59,37 @@ fn main() -> Result<()> {
     // Handle output
     if !result.response.trim().is_empty() {
         let mut output = result.response.clone();
+        let mut is_markdown_content = false;
         
-        // Apply hyperlinks if enabled and response is from any RIR
-        if args.use_hyperlinks() && is_rir_response(&output) {
+        // Check if response contains Markdown and render it
+        if args.use_markdown() && MarkdownRenderer::is_markdown(&output) {
+            if args.verbose {
+                println!("{}", "Rendering Markdown content".bright_cyan());
+            }
+            let mut markdown_renderer = MarkdownRenderer::new(args.use_images());
+            match markdown_renderer.render(&output) {
+                Ok(rendered) => {
+                    output = rendered;
+                    is_markdown_content = true;
+                }
+                Err(err) => {
+                    if args.verbose {
+                        println!("{}: {}", "Markdown rendering failed".bright_yellow(), err);
+                    }
+                    // Fall back to original output
+                }
+            }
+        }
+        
+        // Apply hyperlinks if enabled, response is from any RIR, and not already rendered as Markdown
+        if args.use_hyperlinks() && !is_markdown_content && is_rir_response(&output) {
             let hyperlink_processor = RirHyperlinkProcessor::new();
             output = hyperlink_processor.process(&output);
         }
         
         // Apply client-side coloring if server-side is disabled OR server didn't provide colors
-        if args.use_color() && (!args.use_server_color() || !result.server_colored) {
+        // Skip if already rendered as Markdown (which has its own coloring)
+        if args.use_color() && !is_markdown_content && (!args.use_server_color() || !result.server_colored) {
             let scheme = if args.use_mtf_colors() {
                 ColorScheme::Mtf
             } else {
@@ -76,7 +100,7 @@ fn main() -> Result<()> {
             if args.verbose && args.use_server_color() && !result.server_colored {
                 println!("{}", "Server coloring not available, using client-side coloring".bright_yellow());
             }
-        } else if args.verbose && result.server_colored {
+        } else if args.verbose && result.server_colored && !is_markdown_content {
             println!("{}", "Using server-provided coloring".bright_cyan());
         }
         

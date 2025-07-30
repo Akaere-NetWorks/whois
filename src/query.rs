@@ -128,6 +128,35 @@ impl WhoisQuery {
         self.query_with_referral(domain, &server)
     }
 
+    /// Query with enhanced protocol support (v1.1 with markdown and images)
+    pub fn query_with_enhanced_protocol(
+        &self,
+        domain: &str,
+        use_dn42: bool,
+        use_bgptools: bool,
+        use_server_color: bool,
+        enable_markdown: bool,
+        enable_images: bool,
+        explicit_server: Option<&str>,
+        port: u16,
+        preferred_color_scheme: Option<&str>,
+    ) -> Result<QueryResult> {
+        let server = ServerSelector::select_server(
+            domain,
+            use_dn42,
+            use_bgptools,
+            explicit_server,
+            port,
+        );
+
+        if use_server_color || enable_markdown || enable_images {
+            self.query_with_enhanced_protocol_impl(domain, &server, preferred_color_scheme, enable_markdown, enable_images)
+        } else {
+            self.query_with_referral(domain, &server)
+        }
+    }
+
+    /// Legacy method for backward compatibility
     /// Query with color protocol support
     pub fn query_with_color_protocol(
         &self,
@@ -148,18 +177,20 @@ impl WhoisQuery {
         );
 
         if use_server_color {
-            self.query_with_color_protocol_impl(domain, &server, preferred_color_scheme)
+            self.query_with_enhanced_protocol_impl(domain, &server, preferred_color_scheme, false, false)
         } else {
             self.query_with_referral(domain, &server)
         }
     }
 
-    /// Implementation of color protocol query
-    fn query_with_color_protocol_impl(
+    /// Implementation of enhanced protocol query (v1.1)
+    fn query_with_enhanced_protocol_impl(
         &self,
         domain: &str,
         server: &WhoisServer,
         preferred_color_scheme: Option<&str>,
+        enable_markdown: bool,
+        enable_images: bool,
     ) -> Result<QueryResult> {
         let protocol = WhoisColorProtocol;
         
@@ -183,36 +214,42 @@ impl WhoisQuery {
                 }
             }
 
-            // Try color protocol with final server
-            return self.try_color_protocol_query(domain, &final_server, &protocol, preferred_color_scheme);
+            // Try enhanced protocol with final server
+            return self.try_enhanced_protocol_query(domain, &final_server, &protocol, preferred_color_scheme, enable_markdown, enable_images);
         } else {
-            // Direct server query with color protocol
-            return self.try_color_protocol_query(domain, server, &protocol, preferred_color_scheme);
+            // Direct server query with enhanced protocol
+            return self.try_enhanced_protocol_query(domain, server, &protocol, preferred_color_scheme, enable_markdown, enable_images);
         }
     }
 
-    /// Try color protocol query with server-side rendering preferred
-    fn try_color_protocol_query(
+
+    /// Try enhanced protocol query with all v1.1 features
+    fn try_enhanced_protocol_query(
         &self,
         domain: &str,
         server: &WhoisServer,
         protocol: &WhoisColorProtocol,
         preferred_color_scheme: Option<&str>,
+        enable_markdown: bool,
+        enable_images: bool,
     ) -> Result<QueryResult> {
         // Probe server capabilities
         let capabilities = protocol.probe_capabilities(&server.address(), self.verbose)
             .unwrap_or_default(); // Use default (no support) if probe fails
 
         // Perform query based on capabilities
-        let response = protocol.query_with_color(
+        let response = protocol.query_with_enhanced_protocol(
             &server.address(),
             domain,
             &capabilities,
             preferred_color_scheme,
+            enable_markdown,
+            enable_images,
             self.verbose
         )?;
 
         let server_colored = protocol.is_server_colored(&response);
         Ok(QueryResult::new_with_color(response, server.clone(), server_colored))
     }
+
 } 

@@ -45,6 +45,14 @@ pub struct Cli {
     /// Disable server-side coloring protocol (server-side rendering is default)
     #[arg(long, help = "Disable server-side coloring and use client-side only")]
     pub no_server_color: bool,
+
+    /// Enable Markdown formatting from server
+    #[arg(long, help = "Request Markdown-formatted output from server")]
+    pub markdown: bool,
+
+    /// Enable image display in terminal
+    #[arg(long, help = "Enable inline image display in terminal")]
+    pub images: bool,
 }
 
 impl Cli {
@@ -77,6 +85,16 @@ impl Cli {
     pub fn use_server_color(&self) -> bool {
         !self.no_server_color
     }
+
+    /// Check if Markdown formatting should be requested
+    pub fn use_markdown(&self) -> bool {
+        self.markdown
+    }
+
+    /// Check if image display should be enabled
+    pub fn use_images(&self) -> bool {
+        self.images
+    }
 }
 
 #[cfg(test)]
@@ -95,6 +113,8 @@ mod tests {
             mtf: false,
             no_hyperlinks: false,
             no_server_color: false,
+            markdown: false,
+            images: false,
         }
     }
 
@@ -194,6 +214,24 @@ mod tests {
     }
 
     #[test]
+    fn test_use_markdown() {
+        let mut cli = create_test_cli("example.com");
+        assert!(!cli.use_markdown()); // Default is false
+        
+        cli.markdown = true;
+        assert!(cli.use_markdown());
+    }
+
+    #[test]
+    fn test_use_images() {
+        let mut cli = create_test_cli("example.com");
+        assert!(!cli.use_images()); // Default is false
+        
+        cli.images = true;
+        assert!(cli.use_images());
+    }
+
+    #[test]
     fn test_all_flags_together() {
         let mut cli = create_test_cli("AS4242420000");
         cli.dn42 = true;
@@ -203,6 +241,8 @@ mod tests {
         cli.no_hyperlinks = true;
         cli.verbose = true;
         cli.no_server_color = true;
+        cli.markdown = true;
+        cli.images = true;
         
         // DN42 should be true due to both flag and auto-detection
         assert!(cli.use_dn42());
@@ -211,6 +251,8 @@ mod tests {
         assert!(cli.use_mtf_colors());
         assert!(!cli.use_hyperlinks());
         assert!(!cli.use_server_color());
+        assert!(cli.use_markdown());
+        assert!(cli.use_images());
         assert!(cli.verbose);
     }
 } 
