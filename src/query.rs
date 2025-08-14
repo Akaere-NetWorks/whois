@@ -7,6 +7,58 @@ use crate::protocol::WhoisColorProtocol;
 
 const TIMEOUT_SECONDS: u64 = 10;
 
+/// Check if a WHOIS response is effectively empty or indicates no results
+fn is_empty_result(response: &str) -> bool {
+    let response = response.trim();
+    
+    // Obviously empty
+    if response.is_empty() {
+        return true;
+    }
+    
+    // Common empty response indicators (case-insensitive)
+    let response_lower = response.to_lowercase();
+    let empty_indicators = [
+        "no found",
+        "no match",
+        "not found",
+        "no data found",
+        "no entries found",
+        "no records found",
+        "no such domain",
+        "no whois server is known",
+        "object does not exist",
+        "%error: no objects found",
+        "% no objects found",
+    ];
+    
+    for indicator in &empty_indicators {
+        if response_lower.contains(indicator) {
+            return true;
+        }
+    }
+    
+    // Check if response only contains comment lines (lines starting with % or #)
+    let content_lines: Vec<&str> = response
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .filter(|line| !line.starts_with('%') && !line.starts_with('#'))
+        .collect();
+    
+    if content_lines.is_empty() {
+        return true;
+    }
+    
+    // Check if response is very short (less than 30 characters) and likely just headers/boilerplate
+    // Only apply this for extremely short responses that have minimal content
+    if response.len() < 30 && content_lines.join(" ").len() < 10 {
+        return true;
+    }
+    
+    false
+}
+
 #[derive(Debug)]
 pub struct QueryResult {
     pub response: String,
@@ -125,7 +177,22 @@ impl WhoisQuery {
             port,
         );
 
-        self.query_with_referral(domain, &server)
+        let result = self.query_with_referral(domain, &server)?;
+        
+        // Check if result is empty and fallback to RADB if needed
+        // Only fallback if we're not already using a specific server (DN42, BGPtools, or explicit server)
+        if is_empty_result(&result.response) && 
+           !use_dn42 && !use_bgptools && explicit_server.is_none() && 
+           server.name != "RADB" {
+            
+            if self.verbose {
+                println!("Empty result from RIR servers, trying RADB fallback...");
+            }
+            
+            return self.try_radb_fallback(domain, false, false, false, None);
+        }
+        
+        Ok(result)
     }
 
     /// Query with enhanced protocol support (v1.1 with markdown and images)
@@ -149,11 +216,26 @@ impl WhoisQuery {
             port,
         );
 
-        if use_server_color || enable_markdown || enable_images {
-            self.query_with_enhanced_protocol_impl(domain, &server, preferred_color_scheme, enable_markdown, enable_images)
+        let result = if use_server_color || enable_markdown || enable_images {
+            self.query_with_enhanced_protocol_impl(domain, &server, preferred_color_scheme, enable_markdown, enable_images)?
         } else {
-            self.query_with_referral(domain, &server)
+            self.query_with_referral(domain, &server)?
+        };
+
+        // Check if result is empty and fallback to RADB if needed
+        // Only fallback if we're not already using a specific server (DN42, BGPtools, or explicit server)
+        if is_empty_result(&result.response) && 
+           !use_dn42 && !use_bgptools && explicit_server.is_none() && 
+           server.name != "RADB" {
+            
+            if self.verbose {
+                println!("Empty result from RIR servers, trying RADB fallback...");
+            }
+            
+            return self.try_radb_fallback(domain, use_server_color, enable_markdown, enable_images, preferred_color_scheme);
         }
+
+        Ok(result)
     }
 
     /// Legacy method for backward compatibility
@@ -176,11 +258,26 @@ impl WhoisQuery {
             port,
         );
 
-        if use_server_color {
-            self.query_with_enhanced_protocol_impl(domain, &server, preferred_color_scheme, false, false)
+        let result = if use_server_color {
+            self.query_with_enhanced_protocol_impl(domain, &server, preferred_color_scheme, false, false)?
         } else {
-            self.query_with_referral(domain, &server)
+            self.query_with_referral(domain, &server)?
+        };
+
+        // Check if result is empty and fallback to RADB if needed
+        // Only fallback if we're not already using a specific server (DN42, BGPtools, or explicit server)
+        if is_empty_result(&result.response) && 
+           !use_dn42 && !use_bgptools && explicit_server.is_none() && 
+           server.name != "RADB" {
+            
+            if self.verbose {
+                println!("Empty result from RIR servers, trying RADB fallback...");
+            }
+            
+            return self.try_radb_fallback(domain, use_server_color, false, false, preferred_color_scheme);
         }
+
+        Ok(result)
     }
 
     /// Implementation of enhanced protocol query (v1.1)
@@ -252,4 +349,97 @@ impl WhoisQuery {
         Ok(QueryResult::new_with_color(response, server.clone(), server_colored))
     }
 
+    /// Try RADB fallback when RIR servers return empty results
+    fn try_radb_fallback(
+        &self,
+        domain: &str,
+        use_server_color: bool,
+        enable_markdown: bool,
+        enable_images: bool,
+        preferred_color_scheme: Option<&str>,
+    ) -> Result<QueryResult> {
+        let radb_server = WhoisServer::radb();
+        
+        if self.verbose {
+            println!("Querying RADB at: {}", radb_server.address());
+        }
+        
+        if use_server_color || enable_markdown || enable_images {
+            // Try enhanced protocol with RADB
+            self.query_with_enhanced_protocol_impl(domain, &radb_server, preferred_color_scheme, enable_markdown, enable_images)
+        } else {
+            // Direct query to RADB
+            let response = self.query_direct(domain, &radb_server)?;
+            Ok(QueryResult::new(response, radb_server))
+        }
+    }
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_empty_result_completely_empty() {
+        assert!(is_empty_result(""));
+        assert!(is_empty_result("   "));
+        assert!(is_empty_result("\n\n\n"));
+    }
+
+    #[test]
+    fn test_is_empty_result_common_indicators() {
+        assert!(is_empty_result("No Found"));
+        assert!(is_empty_result("NO MATCH"));
+        assert!(is_empty_result("not found"));
+        assert!(is_empty_result("No data found"));
+        assert!(is_empty_result("No entries found"));
+        assert!(is_empty_result("No records found"));
+        assert!(is_empty_result("No such domain"));
+        assert!(is_empty_result("No whois server is known"));
+        assert!(is_empty_result("Object does not exist"));
+        assert!(is_empty_result("%Error: No objects found"));
+        assert!(is_empty_result("% No objects found"));
+    }
+
+    #[test]
+    fn test_is_empty_result_short_responses() {
+        assert!(is_empty_result("Short"));
+        assert!(is_empty_result("Tiny"));
+        assert!(!is_empty_result("Very short response")); // This is now long enough to be considered valid
+        assert!(!is_empty_result("This is a longer response that should be considered valid content with enough information"));
+    }
+
+    #[test]
+    fn test_is_empty_result_comment_only() {
+        assert!(is_empty_result("% Comment only\n% Another comment\n# More comments"));
+        assert!(is_empty_result("% This is just comments\n\n% More comments"));
+        assert!(!is_empty_result("% Comment\nactual content\n% Another comment"));
+        assert!(!is_empty_result("Some real content\n% with comment"));
+    }
+
+    #[test]
+    fn test_is_empty_result_valid_content() {
+        let valid_content = r#"
+domain:         example.com
+descr:          Example Domain
+admin-c:        ADMIN123
+tech-c:         TECH456
+status:         ASSIGNED
+mnt-by:         EXAMPLE-MNT
+created:        2020-01-01T00:00:00Z
+last-modified:  2020-12-31T23:59:59Z
+source:         RIPE
+        "#;
+        assert!(!is_empty_result(valid_content));
+    }
+
+    #[test]
+    fn test_radb_server_creation() {
+        let radb = WhoisServer::radb();
+        assert_eq!(radb.host, "whois.radb.net");
+        assert_eq!(radb.port, 43);
+        assert_eq!(radb.name, "RADB");
+        assert_eq!(radb.address(), "whois.radb.net:43");
+    }
 } 

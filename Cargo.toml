@@ -1,6 +1,6 @@
 [package]
 name = "whois"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "A simple WHOIS query tool"
 authors = ["Pysio"]

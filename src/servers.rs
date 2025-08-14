@@ -7,6 +7,8 @@ pub const DN42_WHOIS_SERVER: &str = "lantian.pub";
 pub const DN42_WHOIS_PORT: u16 = 43;
 pub const BGPTOOLS_WHOIS_SERVER: &str = "bgp.tools";
 pub const BGPTOOLS_WHOIS_PORT: u16 = 43;
+pub const RADB_WHOIS_SERVER: &str = "whois.radb.net";
+pub const RADB_WHOIS_PORT: u16 = 43;
 
 #[derive(Debug, Clone)]
 pub struct WhoisServer {
@@ -38,6 +40,10 @@ impl WhoisServer {
 
     pub fn bgptools() -> Self {
         Self::new(BGPTOOLS_WHOIS_SERVER, BGPTOOLS_WHOIS_PORT, "BGP.tools")
+    }
+
+    pub fn radb() -> Self {
+        Self::new(RADB_WHOIS_SERVER, RADB_WHOIS_PORT, "RADB")
     }
 
     pub fn custom(host: impl Into<String>, port: u16) -> Self {
