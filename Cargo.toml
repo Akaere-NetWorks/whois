@@ -5,6 +5,7 @@ edition = "2021"
 description = "A simple WHOIS query tool"
 authors = ["Pysio"]
 license = "AGPL-3.0"
+repository = "https://github.com/Akaere-NetWorks/whois"
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
