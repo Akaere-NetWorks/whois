@@ -6,6 +6,9 @@ description = "A simple WHOIS query tool"
 authors = ["Pysio"]
 license = "AGPL-3.0"
 repository = "https://github.com/Akaere-NetWorks/whois"
+homepage = "https://github.com/Akaere-NetWorks/whois"
+keywords = ["whois", "dns", "network", "cli"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
