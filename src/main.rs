@@ -1,8 +1,8 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::*;
+use clap::Parser;
 
-use whois::{Cli, WhoisQuery, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response, MarkdownRenderer};
+use whois_cli::{Cli, WhoisQuery, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response, MarkdownRenderer};
 
 fn main() -> Result<()> {
     let args = Cli::parse();
