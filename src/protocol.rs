@@ -1,21 +1,43 @@
+//! WHOIS-COLOR protocol implementation (v1.1).
+//!
+//! A backward-compatible extension to the standard WHOIS protocol that allows
+//! clients to request server-side colorization, Markdown-formatted output,
+//! and image display support via capability probing and HTTP-style headers.
+//!
+//! # Protocol Flow
+//!
+//! 1. Send a `X-WHOIS-COLOR-PROBE` to discover server capabilities
+//! 2. Parse the `X-WHOIS-COLOR-SUPPORT` response into [`ServerCapabilities`]
+//! 3. Build an enhanced query with `X-WHOIS-COLOR`, `X-WHOIS-MARKDOWN`,
+//!    and/or `X-WHOIS-IMAGES` headers
+//! 4. Non-supporting servers ignore unknown headers and respond normally
+
+use std::fmt::Write as FmtWrite;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 use anyhow::{Context, Result};
 
-/// WHOIS-COLOR Protocol v1.1
+/// WHOIS-COLOR Protocol v1.1.
+///
 /// A backward-compatible extension protocol for server-side colorization,
-/// Markdown rendering, and image display support
+/// Markdown rendering, and image display support.
 pub struct WhoisColorProtocol;
 
-/// Server capability information
+/// Server capability information from a WHOIS-COLOR capability probe.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServerCapabilities {
+    /// Whether the server supports the WHOIS-COLOR protocol.
     pub supports_color: bool,
+    /// List of color scheme names the server can apply (e.g., `ripe`, `bgptools`, `mtf`).
     pub color_schemes: Vec<String>,
+    /// Protocol version string (e.g., `"v1.0"`, `"v1.1"`, or `"none"`).
     pub protocol_version: String,
+    /// Whether the server supports Markdown-formatted responses.
     pub supports_markdown: bool,
+    /// Whether the server supports inline image transmission.
     pub supports_images: bool,
+    /// List of image format identifiers the server can provide (e.g., `png`, `jpg`).
     pub image_formats: Vec<String>,
 }
 
@@ -32,31 +54,47 @@ impl Default for ServerCapabilities {
     }
 }
 
-/// Protocol constants
+/// Protocol version string for the current WHOIS-COLOR protocol.
 pub const PROTOCOL_VERSION: &str = "1.1";
+/// Legacy protocol version string (v1.0 — color only, no markdown/images).
 pub const LEGACY_VERSION: &str = "1.0";
+/// Capability probe query string sent to discover server features.
 pub const CAPABILITY_PROBE: &str = "X-WHOIS-COLOR-PROBE: v1.1\r\n";
+/// Prefix for the color scheme request header.
 pub const COLOR_REQUEST_PREFIX: &str = "X-WHOIS-COLOR: ";
+/// Prefix for the Markdown request header.
 pub const MARKDOWN_REQUEST_PREFIX: &str = "X-WHOIS-MARKDOWN: ";
+/// Prefix for the image request header.
 pub const IMAGE_REQUEST_PREFIX: &str = "X-WHOIS-IMAGES: ";
+/// Prefix for the capability response line from the server.
 pub const CAPABILITY_RESPONSE_PREFIX: &str = "X-WHOIS-COLOR-SUPPORT: ";
-pub const CAPABILITY_TIMEOUT_MS: u64 = 2000; // 2 seconds for capability probe
+/// Timeout in milliseconds for the capability probe connection.
+pub const CAPABILITY_TIMEOUT_MS: u64 = 2000;
 
 impl WhoisColorProtocol {
-    /// Probe server for color protocol support
-    /// This method sends a capability probe and waits for a response
-    /// If no response or timeout, assumes standard WHOIS server
+    /// Probe a server for WHOIS-COLOR protocol support.
+    ///
+    /// Sends a capability probe (`X-WHOIS-COLOR-PROBE`) and waits for a
+    /// structured response. If the probe fails (timeout, connection error,
+    /// or unrecognized response) the server is assumed to be a standard
+    /// WHOIS server with no capabilities.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only if the TCP connection itself fails. Timeouts
+    /// and missing capability responses are handled gracefully by returning
+    /// [`ServerCapabilities::default`].
     pub fn probe_capabilities(
         &self, 
         server_address: &str,
         verbose: bool
     ) -> Result<ServerCapabilities> {
         if verbose {
-            println!("Probing color capabilities for: {}", server_address);
+            println!("Probing color capabilities for: {server_address}");
         }
 
         let mut stream = TcpStream::connect(server_address)
-            .with_context(|| format!("Cannot connect to server for capability probe: {}", server_address))?;
+            .with_context(|| format!("Cannot connect to server for capability probe: {server_address}"))?;
         
         // Set shorter timeout for capability probe
         stream.set_read_timeout(Some(Duration::from_millis(CAPABILITY_TIMEOUT_MS)))
@@ -67,9 +105,9 @@ impl WhoisColorProtocol {
 
         // Send capability probe
         // Format: "X-WHOIS-COLOR-PROBE: v1.0\r\n\r\n"
-        let probe_query = format!("{}\r\n", CAPABILITY_PROBE);
+        let probe_query = format!("{CAPABILITY_PROBE}\r\n");
         
-        if let Err(_) = stream.write_all(probe_query.as_bytes()) {
+        if stream.write_all(probe_query.as_bytes()).is_err() {
             // If write fails, assume standard WHOIS server
             if verbose {
                 println!("Capability probe write failed, assuming standard WHOIS");
@@ -79,32 +117,29 @@ impl WhoisColorProtocol {
 
         // Try to read response
         let mut response = String::new();
-        match stream.read_to_string(&mut response) {
-            Ok(_) => {
-                let capabilities = self.parse_capability_response(&response);
-                if verbose {
-                    println!("Server capabilities: {:?}", capabilities);
-                }
-                Ok(capabilities)
+        if stream.read_to_string(&mut response).is_ok() {
+            let capabilities = Self::parse_capability_response(&response);
+            if verbose {
+                println!("Server capabilities: {capabilities:?}");
             }
-            Err(_) => {
-                // Timeout or read error - assume standard WHOIS server
-                if verbose {
-                    println!("No capability response, assuming standard WHOIS");
-                }
-                Ok(ServerCapabilities::default())
+            Ok(capabilities)
+        } else {
+            // Timeout or read error - assume standard WHOIS server
+            if verbose {
+                println!("No capability response, assuming standard WHOIS");
             }
+            Ok(ServerCapabilities::default())
         }
     }
 
     /// Parse capability response from server
     /// Expected format: "X-WHOIS-COLOR-SUPPORT: v1.1 schemes=ripe,bgptools,mtf markdown=true images=png,jpg\r\n"
     /// Legacy format: "X-WHOIS-COLOR-SUPPORT: v1.0 schemes=ripe,bgptools,mtf\r\n"
-    fn parse_capability_response(&self, response: &str) -> ServerCapabilities {
+    fn parse_capability_response(response: &str) -> ServerCapabilities {
         for line in response.lines() {
             let line = line.trim();
-            if line.starts_with(CAPABILITY_RESPONSE_PREFIX) {
-                return self.parse_capability_line(&line[CAPABILITY_RESPONSE_PREFIX.len()..]);
+            if let Some(stripped) = line.strip_prefix(CAPABILITY_RESPONSE_PREFIX) {
+                return Self::parse_capability_line(stripped);
             }
         }
         ServerCapabilities::default()
@@ -113,7 +148,7 @@ impl WhoisColorProtocol {
     /// Parse a single capability line
     /// Format v1.1: "v1.1 schemes=ripe,bgptools,mtf markdown=true images=png,jpg"
     /// Format v1.0: "v1.0 schemes=ripe,bgptools,mtf"
-    fn parse_capability_line(&self, capability_data: &str) -> ServerCapabilities {
+    fn parse_capability_line(capability_data: &str) -> ServerCapabilities {
         let parts: Vec<&str> = capability_data.split_whitespace().collect();
         if parts.is_empty() {
             return ServerCapabilities::default();
@@ -122,7 +157,7 @@ impl WhoisColorProtocol {
         let protocol_version = parts[0].to_string();
         let mut capabilities = ServerCapabilities {
             supports_color: true,
-            protocol_version: protocol_version.clone(),
+            protocol_version,
             color_schemes: vec![],
             supports_markdown: false,
             supports_images: false,
@@ -152,8 +187,14 @@ impl WhoisColorProtocol {
         capabilities
     }
 
-    /// Perform query with enhanced protocol support (color, markdown, images)
-    /// Falls back gracefully for older servers
+    /// Perform a WHOIS query with enhanced protocol support (color, markdown,
+    /// images). Falls back to a standard plain-text query for older servers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the TCP connection fails, timeouts cannot be set,
+    /// writing the query fails, or reading the response fails.
+    #[expect(clippy::too_many_arguments, reason = "protocol query requires many parameters")]
     pub fn query_with_enhanced_protocol(
         &self,
         server_address: &str,
@@ -165,7 +206,7 @@ impl WhoisColorProtocol {
         verbose: bool
     ) -> Result<String> {
         let mut stream = TcpStream::connect(server_address)
-            .with_context(|| format!("Cannot connect to WHOIS server: {}", server_address))?;
+            .with_context(|| format!("Cannot connect to WHOIS server: {server_address}"))?;
         
         stream.set_read_timeout(Some(Duration::from_secs(10)))
             .context("Failed to set read timeout")?;
@@ -174,10 +215,10 @@ impl WhoisColorProtocol {
             .context("Failed to set write timeout")?;
 
         let query_string = if capabilities.supports_color || capabilities.supports_markdown || capabilities.supports_images {
-            self.build_enhanced_query(query, capabilities, preferred_scheme, enable_markdown, enable_images, verbose)
+            Self::build_enhanced_query(query, capabilities, preferred_scheme, enable_markdown, enable_images, verbose)
         } else {
             // Standard WHOIS query
-            format!("{}\r\n", query)
+            format!("{query}\r\n")
         };
 
         if verbose {
@@ -206,7 +247,6 @@ impl WhoisColorProtocol {
     /// Format v1.1: "X-WHOIS-COLOR: scheme=ripe\r\nX-WHOIS-MARKDOWN: true\r\nX-WHOIS-IMAGES: png,jpg\r\nquery\r\n"
     /// Format v1.0: "X-WHOIS-COLOR: scheme=ripe\r\nquery\r\n"
     fn build_enhanced_query(
-        &self,
         query: &str,
         capabilities: &ServerCapabilities,
         preferred_scheme: Option<&str>,
@@ -218,31 +258,31 @@ impl WhoisColorProtocol {
         
         // Add color header if supported
         if capabilities.supports_color {
-            if let Some(scheme) = self.select_color_scheme(capabilities, preferred_scheme) {
+            if let Some(scheme) = Self::select_color_scheme(capabilities, preferred_scheme) {
                 if verbose {
-                    println!("Requesting server-side coloring with scheme: {}", scheme);
+                    println!("Requesting server-side coloring with scheme: {scheme}");
                 }
-                headers.push_str(&format!("{}scheme={}\r\n", COLOR_REQUEST_PREFIX, scheme));
+                let _ = write!(headers, "{COLOR_REQUEST_PREFIX}scheme={scheme}\r\n");
             }
         }
         
         // Add markdown header if supported and requested
         if capabilities.supports_markdown && enable_markdown {
-            headers.push_str(&format!("{}true\r\n", MARKDOWN_REQUEST_PREFIX));
+            let _ = write!(headers, "{MARKDOWN_REQUEST_PREFIX}true\r\n");
         }
         
         // Add images header if supported and requested
         if capabilities.supports_images && enable_images && !capabilities.image_formats.is_empty() {
             let formats = capabilities.image_formats.join(",");
-            headers.push_str(&format!("{}{}\r\n", IMAGE_REQUEST_PREFIX, formats));
+            let _ = write!(headers, "{IMAGE_REQUEST_PREFIX}{formats}\r\n");
         }
         
         if headers.is_empty() {
             // No protocol features, use standard query
-            format!("{}\r\n", query)
+            format!("{query}\r\n")
         } else {
             // Enhanced protocol query
-            format!("{}{}\r\n", headers, query)
+            format!("{headers}{query}\r\n")
         }
     }
 
@@ -251,31 +291,29 @@ impl WhoisColorProtocol {
     /// Format: "X-WHOIS-COLOR: scheme=ripe\r\nquery\r\n"
     #[allow(dead_code)]
     fn build_color_query(
-        &self,
         query: &str,
         capabilities: &ServerCapabilities,
         preferred_scheme: Option<&str>,
         verbose: bool
     ) -> String {
-        let scheme = self.select_color_scheme(capabilities, preferred_scheme);
+        let scheme = Self::select_color_scheme(capabilities, preferred_scheme);
         
         if let Some(scheme) = scheme {
             if verbose {
-                println!("Requesting server-side coloring with scheme: {}", scheme);
+                println!("Requesting server-side coloring with scheme: {scheme}");
             }
-            format!("{}scheme={}\r\n{}\r\n", COLOR_REQUEST_PREFIX, scheme, query)
+            format!("{COLOR_REQUEST_PREFIX}scheme={scheme}\r\n{query}\r\n")
         } else {
             // No suitable scheme, use standard query
             if verbose {
                 println!("No suitable color scheme, falling back to standard query");
             }
-            format!("{}\r\n", query)
+            format!("{query}\r\n")
         }
     }
 
     /// Select appropriate color scheme based on server capabilities and preference
     fn select_color_scheme(
-        &self,
         capabilities: &ServerCapabilities,
         preferred_scheme: Option<&str>
     ) -> Option<String> {
@@ -296,6 +334,7 @@ impl WhoisColorProtocol {
 
     /// Check if response contains server-generated colors
     /// Server-colored responses should contain color control sequences
+    #[must_use] 
     pub fn is_server_colored(&self, response: &str) -> bool {
         // Check for ANSI color escape sequences
         response.contains("\x1b[") || 
@@ -310,10 +349,8 @@ mod tests {
 
     #[test]
     fn test_parse_capability_response_v10() {
-        let protocol = WhoisColorProtocol;
-        
         let response = "X-WHOIS-COLOR-SUPPORT: v1.0 schemes=ripe,bgptools,mtf\r\n";
-        let capabilities = protocol.parse_capability_response(response);
+        let capabilities = WhoisColorProtocol::parse_capability_response(response);
         
         assert!(capabilities.supports_color);
         assert_eq!(capabilities.protocol_version, "v1.0");
@@ -324,10 +361,8 @@ mod tests {
 
     #[test]
     fn test_parse_capability_response_v11() {
-        let protocol = WhoisColorProtocol;
-        
         let response = "X-WHOIS-COLOR-SUPPORT: v1.1 schemes=ripe,bgptools,mtf markdown=true images=png,jpg\r\n";
-        let capabilities = protocol.parse_capability_response(response);
+        let capabilities = WhoisColorProtocol::parse_capability_response(response);
         
         assert!(capabilities.supports_color);
         assert_eq!(capabilities.protocol_version, "v1.1");
@@ -339,10 +374,8 @@ mod tests {
 
     #[test]
     fn test_parse_capability_response_minimal() {
-        let protocol = WhoisColorProtocol;
-        
         let response = "X-WHOIS-COLOR-SUPPORT: v1.0\r\n";
-        let capabilities = protocol.parse_capability_response(response);
+        let capabilities = WhoisColorProtocol::parse_capability_response(response);
         
         assert!(capabilities.supports_color);
         assert_eq!(capabilities.protocol_version, "v1.0");
@@ -351,10 +384,8 @@ mod tests {
 
     #[test]
     fn test_parse_capability_response_no_support() {
-        let protocol = WhoisColorProtocol;
-        
         let response = "Some other response\r\n";
-        let capabilities = protocol.parse_capability_response(response);
+        let capabilities = WhoisColorProtocol::parse_capability_response(response);
         
         assert!(!capabilities.supports_color);
         assert_eq!(capabilities.protocol_version, "none");
@@ -363,7 +394,6 @@ mod tests {
 
     #[test]
     fn test_select_color_scheme_preferred() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities {
             supports_color: true,
             color_schemes: vec!["ripe".to_string(), "bgptools".to_string()],
@@ -373,13 +403,12 @@ mod tests {
             image_formats: vec![],
         };
         
-        let scheme = protocol.select_color_scheme(&capabilities, Some("bgptools"));
+        let scheme = WhoisColorProtocol::select_color_scheme(&capabilities, Some("bgptools"));
         assert_eq!(scheme, Some("bgptools".to_string()));
     }
 
     #[test]
     fn test_select_color_scheme_fallback() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities {
             supports_color: true,
             color_schemes: vec!["ripe".to_string(), "bgptools".to_string()],
@@ -389,22 +418,20 @@ mod tests {
             image_formats: vec![],
         };
         
-        let scheme = protocol.select_color_scheme(&capabilities, Some("invalid"));
+        let scheme = WhoisColorProtocol::select_color_scheme(&capabilities, Some("invalid"));
         assert_eq!(scheme, Some("ripe".to_string()));
     }
 
     #[test]
     fn test_select_color_scheme_no_support() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities::default();
         
-        let scheme = protocol.select_color_scheme(&capabilities, Some("ripe"));
+        let scheme = WhoisColorProtocol::select_color_scheme(&capabilities, Some("ripe"));
         assert_eq!(scheme, None);
     }
 
     #[test]
     fn test_build_enhanced_query_v10_compat() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities {
             supports_color: true,
             color_schemes: vec!["ripe".to_string()],
@@ -414,13 +441,12 @@ mod tests {
             image_formats: vec![],
         };
         
-        let query = protocol.build_enhanced_query("example.com", &capabilities, Some("ripe"), false, false, false);
+        let query = WhoisColorProtocol::build_enhanced_query("example.com", &capabilities, Some("ripe"), false, false, false);
         assert_eq!(query, "X-WHOIS-COLOR: scheme=ripe\r\nexample.com\r\n");
     }
 
     #[test]
     fn test_build_enhanced_query_v11_full() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities {
             supports_color: true,
             color_schemes: vec!["ripe".to_string()],
@@ -430,14 +456,13 @@ mod tests {
             image_formats: vec!["png".to_string(), "jpg".to_string()],
         };
         
-        let query = protocol.build_enhanced_query("example.com", &capabilities, Some("ripe"), true, true, false);
+        let query = WhoisColorProtocol::build_enhanced_query("example.com", &capabilities, Some("ripe"), true, true, false);
         let expected = "X-WHOIS-COLOR: scheme=ripe\r\nX-WHOIS-MARKDOWN: true\r\nX-WHOIS-IMAGES: png,jpg\r\nexample.com\r\n";
         assert_eq!(query, expected);
     }
 
     #[test]
     fn test_build_color_query_legacy() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities {
             supports_color: true,
             color_schemes: vec!["ripe".to_string()],
@@ -447,16 +472,15 @@ mod tests {
             image_formats: vec![],
         };
         
-        let query = protocol.build_color_query("example.com", &capabilities, Some("ripe"), false);
+        let query = WhoisColorProtocol::build_color_query("example.com", &capabilities, Some("ripe"), false);
         assert_eq!(query, "X-WHOIS-COLOR: scheme=ripe\r\nexample.com\r\n");
     }
 
     #[test]
     fn test_build_color_query_no_scheme() {
-        let protocol = WhoisColorProtocol;
         let capabilities = ServerCapabilities::default();
         
-        let query = protocol.build_color_query("example.com", &capabilities, Some("ripe"), false);
+        let query = WhoisColorProtocol::build_color_query("example.com", &capabilities, Some("ripe"), false);
         assert_eq!(query, "example.com\r\n");
     }
 

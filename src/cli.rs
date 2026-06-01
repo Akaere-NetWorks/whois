@@ -1,11 +1,23 @@
+//! Command-line argument parsing for the `whois` binary.
+//!
+//! Uses [`clap::Parser`] to define all CLI flags, options, and arguments.
+//! The [`Cli`] struct exposes convenience methods for feature flag checks
+//! such as [`Cli::use_color`], [`Cli::use_dn42`], [`Cli::use_hyperlinks`],
+//! and others.
+
 use clap::Parser;
 
+/// Command-line arguments for the WHOIS query tool.
+///
+/// Parsed from `std::env::args()` via [`clap::Parser`]. Fields with
+/// `#[arg(..)]` attributes provide help text for `--help`.
 #[derive(Parser)]
 #[command(
     author = "Pysio",
     version = env!("CARGO_PKG_VERSION"),
     about = "A simple WHOIS query tool with advanced features"
 )]
+#[expect(clippy::struct_excessive_bools, reason = "CLI flags naturally map to booleans")]
 pub struct Cli {
     /// Domain name or IP address to query
     pub domain: String,
@@ -57,41 +69,49 @@ pub struct Cli {
 
 impl Cli {
     /// Check if colored output should be used
+    #[must_use] 
     pub fn use_color(&self) -> bool {
         !self.no_color
     }
 
     /// Check if MTF colors should be used
+    #[must_use] 
     pub fn use_mtf_colors(&self) -> bool {
         self.mtf
     }
 
     /// Check if DN42 mode should be used
+    #[must_use] 
     pub fn use_dn42(&self) -> bool {
         self.dn42 || self.domain.to_uppercase().starts_with("AS42424")
     }
 
     /// Check if BGP tools mode should be used
+    #[must_use] 
     pub fn use_bgptools(&self) -> bool {
         self.bgptools
     }
 
     /// Check if hyperlinks should be used
+    #[must_use] 
     pub fn use_hyperlinks(&self) -> bool {
         !self.no_hyperlinks
     }
 
     /// Check if server-side coloring should be used (default: true)
+    #[must_use] 
     pub fn use_server_color(&self) -> bool {
         !self.no_server_color
     }
 
     /// Check if Markdown formatting should be requested
+    #[must_use] 
     pub fn use_markdown(&self) -> bool {
         self.markdown
     }
 
     /// Check if image display should be enabled
+    #[must_use] 
     pub fn use_images(&self) -> bool {
         self.images
     }

@@ -1,38 +1,60 @@
-use regex::Regex;
+//! RIR database hyperlink generation for terminal output.
+//!
+//! Detects the originating RIR (RIPE, ARIN, APNIC, LACNIC, AFRINIC) from
+//! WHOIS response text and injects OSC 8 hyperlinks so that key values
+//! (AS numbers, IP ranges, NIC handles, etc.) become clickable in
+//! supporting terminals.
+//!
+//! The main entry point is [`RirHyperlinkProcessor::process`], which handles
+//! multi-RIR responses by splitting on `source:` boundaries.
+
 use std::env;
+use std::sync::LazyLock;
+
+use regex::Regex;
 use urlencoding::encode;
+
+static SOURCE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^source:\s*([A-Z-]+)").expect("invalid source regex pattern")
+});
+
+static SOURCE_LINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^source:\s*([A-Z-]+)").expect("invalid source line regex pattern")
+});
 
 /// Represents Regional Internet Registry URLs
 pub struct RirUrls;
 
 impl RirUrls {
     /// Get the appropriate URL for a given RIR and search term
+    #[must_use] 
     pub fn get_url(rir: &str, search_term: &str) -> String {
         let encoded_term = encode(search_term);
         
         match rir.to_uppercase().as_str() {
-            "RIPE" => format!("https://apps.db.ripe.net/db-web-ui/query?searchtext={}", encoded_term),
-            "ARIN" => format!("https://search.arin.net/rdap/?query={}", encoded_term),
-            "APNIC" => format!("https://wq.apnic.net/apnic-bin/whois.pl?searchtext={}", encoded_term),
+            "RIPE" => format!("https://apps.db.ripe.net/db-web-ui/query?searchtext={encoded_term}"),
+            "ARIN" => format!("https://search.arin.net/rdap/?query={encoded_term}"),
+            "APNIC" => format!("https://wq.apnic.net/apnic-bin/whois.pl?searchtext={encoded_term}"),
             "LACNIC" => {
                 // LACNIC uses a different parameter format
-                format!("https://query.milacnic.lacnic.net/home?searchtext={}", encoded_term)
+                format!("https://query.milacnic.lacnic.net/home?searchtext={encoded_term}")
             },
-            "AFRINIC" => format!("https://afrinic.net/whois?searchtext={}", encoded_term),
+            "AFRINIC" => format!("https://afrinic.net/whois?searchtext={encoded_term}"),
             _ => {
                 // Fallback to RIPE for unknown RIRs
-                format!("https://apps.db.ripe.net/db-web-ui/query?searchtext={}", encoded_term)
+                format!("https://apps.db.ripe.net/db-web-ui/query?searchtext={encoded_term}")
             }
         }
     }
 }
 
 /// Detect RIR from source field - more accurate than content-based detection
+#[must_use] 
 pub fn detect_rir_from_source(response: &str) -> Vec<&'static str> {
     let mut rirs = Vec::new();
     
     // Use regex to find all source fields
-    let source_regex = Regex::new(r"(?m)^source:\s*([A-Z-]+)").unwrap();
+    let source_regex = &*SOURCE_REGEX;
     
     for caps in source_regex.captures_iter(response) {
         if let Some(source) = caps.get(1) {
@@ -58,6 +80,7 @@ pub fn detect_rir_from_source(response: &str) -> Vec<&'static str> {
 }
 
 /// Legacy function - detect which RIR the response is from (fallback method)
+#[must_use] 
 pub fn detect_rir(response: &str) -> Option<&'static str> {
     // First try source-based detection
     let rirs = detect_rir_from_source(response);
@@ -101,16 +124,19 @@ pub fn detect_rir(response: &str) -> Option<&'static str> {
 }
 
 /// Check if the WHOIS response is from any RIR
+#[must_use] 
 pub fn is_rir_response(response: &str) -> bool {
     !detect_rir_from_source(response).is_empty() || detect_rir(response).is_some()
 }
 
 /// Check if the WHOIS response is from RIPE NCC
+#[must_use] 
 pub fn is_ripe_response(response: &str) -> bool {
     detect_rir_from_source(response).contains(&"ripe") || detect_rir(response) == Some("ripe")
 }
 
 /// Check if terminal supports hyperlinks (OSC 8) - improved Windows detection
+#[must_use] 
 pub fn terminal_supports_hyperlinks() -> bool {
     // Check for Windows Terminal first (most reliable)
     if env::var("WT_SESSION").is_ok() || env::var("WT_PROFILE_ID").is_ok() {
@@ -118,7 +144,7 @@ pub fn terminal_supports_hyperlinks() -> bool {
     }
 
     // Check for PowerShell with Windows Terminal
-    if env::var("TERM_PROGRAM").map_or(false, |term| term == "vscode") {
+    if env::var("TERM_PROGRAM").is_ok_and(|term| term == "vscode") {
         return true;
     }
 
@@ -142,17 +168,17 @@ pub fn terminal_supports_hyperlinks() -> bool {
     }
 
     // Check for iTerm2
-    if env::var("ITERM_SESSION_ID").is_ok() || env::var("TERM_PROGRAM").map_or(false, |term| term == "iTerm.app") {
+    if env::var("ITERM_SESSION_ID").is_ok() || env::var("TERM_PROGRAM").is_ok_and(|term| term == "iTerm.app") {
         return true;
     }
 
     // Check for WezTerm
-    if env::var("WEZTERM_EXECUTABLE").is_ok() || env::var("TERM_PROGRAM").map_or(false, |term| term == "WezTerm") {
+    if env::var("WEZTERM_EXECUTABLE").is_ok() || env::var("TERM_PROGRAM").is_ok_and(|term| term == "WezTerm") {
         return true;
     }
 
     // Check for Hyper
-    if env::var("TERM_PROGRAM").map_or(false, |term| term == "Hyper") {
+    if env::var("TERM_PROGRAM").is_ok_and(|term| term == "Hyper") {
         return true;
     }
 
@@ -175,12 +201,13 @@ pub fn terminal_supports_hyperlinks() -> bool {
 }
 
 /// Create OSC 8 hyperlink
+#[must_use] 
 pub fn create_hyperlink(url: &str, text: &str) -> String {
     if !terminal_supports_hyperlinks() {
         return text.to_string();
     }
 
-    format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, text)
+    format!("\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\")
 }
 
 /// Split response into blocks by RIR source
@@ -192,7 +219,7 @@ fn split_response_by_source(response: &str) -> Vec<(String, &'static str)> {
     
     for line in lines {
         // Check if this line contains a source field
-        if let Some(caps) = Regex::new(r"^source:\s*([A-Z-]+)").unwrap().captures(line) {
+        if let Some(caps) = SOURCE_LINE_REGEX.captures(line) {
             if let Some(source) = caps.get(1) {
                 let source_value = source.as_str().trim();
                 let rir = match source_value {
@@ -246,11 +273,14 @@ fn split_response_by_source(response: &str) -> Vec<(String, &'static str)> {
 pub struct RirHyperlinkProcessor;
 
 impl RirHyperlinkProcessor {
+    /// Create a new `RirHyperlinkProcessor`.
+    #[must_use] 
     pub fn new() -> Self {
         Self
     }
 
     /// Process RIR response and add hyperlinks - handles multi-RIR responses
+    #[must_use] 
     pub fn process(&self, response: &str) -> String {
         if !terminal_supports_hyperlinks() {
             return response.to_string();
@@ -270,11 +300,11 @@ impl RirHyperlinkProcessor {
             
             // Apply RIR-specific patterns
             match rir {
-                "ripe" => self.process_ripe(&mut processed_block),
-                "arin" => self.process_arin(&mut processed_block),
-                "apnic" => self.process_apnic(&mut processed_block),
-                "lacnic" => self.process_lacnic(&mut processed_block),
-                "afrinic" => self.process_afrinic(&mut processed_block),
+                "ripe" => Self::process_ripe(&mut processed_block),
+                "arin" => Self::process_arin(&mut processed_block),
+                "apnic" => Self::process_apnic(&mut processed_block),
+                "lacnic" => Self::process_lacnic(&mut processed_block),
+                "afrinic" => Self::process_afrinic(&mut processed_block),
                 _ => {}
             }
             
@@ -284,25 +314,24 @@ impl RirHyperlinkProcessor {
         processed_blocks.join("")
     }
 
-    fn apply_patterns(&self, processed: &mut String, patterns: Vec<(&str, &str)>, rir: &str) {
+    fn apply_patterns(processed: &mut String, patterns: Vec<(&str, &str)>, rir: &str) {
         for (pattern_str, _) in patterns {
             if let Ok(pattern) = Regex::new(pattern_str) {
                 *processed = pattern.replace_all(processed, |caps: &regex::Captures| {
-                    let _full_match = caps.get(0).unwrap().as_str();
-                    let prefix = caps.get(1).unwrap().as_str();
-                    let value = caps.get(2).unwrap().as_str();
+                    let prefix = caps.get(1).expect("regex guarantees capture group 1").as_str();
+                    let value = caps.get(2).expect("regex guarantees capture group 2").as_str();
                     
                     // Generate URL for the detected RIR
                     let url = RirUrls::get_url(rir, value);
                     let hyperlinked_value = create_hyperlink(&url, value);
                     
-                    format!("{}{}", prefix, hyperlinked_value)
+                    format!("{prefix}{hyperlinked_value}")
                 }).to_string();
             }
         }
     }
 
-    fn process_ripe(&self, processed: &mut String) {
+    fn process_ripe(processed: &mut String) {
         let patterns = vec![
             // ASN patterns
             (r"(?m)^(aut-num:\s+)(AS\d+)", ""),
@@ -334,10 +363,10 @@ impl RirHyperlinkProcessor {
             (r"(?m)^(as-block:\s+)(AS\d+\s*-\s*AS\d+)", ""),
         ];
 
-        self.apply_patterns(processed, patterns, "RIPE");
+        Self::apply_patterns(processed, patterns, "RIPE");
     }
 
-    fn process_arin(&self, processed: &mut String) {
+    fn process_arin(processed: &mut String) {
         let patterns = vec![
             // ARIN-specific patterns
             (r"(?m)^(NetRange:\s+)([0-9.-]+)", ""),
@@ -345,7 +374,6 @@ impl RirHyperlinkProcessor {
             (r"(?m)^(OriginAS:\s+)(AS\d+)", ""),
             (r"(?m)^(OrgId:\s+)([A-Z0-9-]+)", ""),
             (r"(?m)^(NetName:\s+)([A-Z0-9-]+)", ""),
-            
             // Common ASN and IP patterns
             (r"(?m)^(aut-num:\s+)(AS\d+)", ""),
             (r"(?m)^(origin:\s+)(AS\d+)", ""),
@@ -353,10 +381,10 @@ impl RirHyperlinkProcessor {
             (r"(?m)^(inet6num:\s+)([0-9a-fA-F:]+/\d+)", ""),
         ];
 
-        self.apply_patterns(processed, patterns, "ARIN");
+        Self::apply_patterns(processed, patterns, "ARIN");
     }
 
-    fn process_apnic(&self, processed: &mut String) {
+    fn process_apnic(processed: &mut String) {
         let patterns = vec![
             // Common patterns for APNIC
             (r"(?m)^(aut-num:\s+)(AS\d+)", ""),
@@ -368,10 +396,10 @@ impl RirHyperlinkProcessor {
             (r"(?m)^(tech-c:\s+)([A-Z0-9-]+)", ""),
         ];
 
-        self.apply_patterns(processed, patterns, "APNIC");
+        Self::apply_patterns(processed, patterns, "APNIC");
     }
 
-    fn process_lacnic(&self, processed: &mut String) {
+    fn process_lacnic(processed: &mut String) {
         let patterns = vec![
             // Common patterns for LACNIC
             (r"(?m)^(aut-num:\s+)(AS\d+)", ""),
@@ -381,10 +409,10 @@ impl RirHyperlinkProcessor {
             (r"(?m)^(nic-hdl:\s+)([A-Z0-9-]+)", ""),
         ];
 
-        self.apply_patterns(processed, patterns, "LACNIC");
+        Self::apply_patterns(processed, patterns, "LACNIC");
     }
 
-    fn process_afrinic(&self, processed: &mut String) {
+    fn process_afrinic(processed: &mut String) {
         let patterns = vec![
             // Common patterns for AFRINIC
             (r"(?m)^(aut-num:\s+)(AS\d+)", ""),
@@ -394,8 +422,9 @@ impl RirHyperlinkProcessor {
             (r"(?m)^(nic-hdl:\s+)([A-Z0-9-]+)", ""),
         ];
 
-        self.apply_patterns(processed, patterns, "AFRINIC");
+        Self::apply_patterns(processed, patterns, "AFRINIC");
     }
+
 }
 
 impl Default for RirHyperlinkProcessor {
@@ -413,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_detect_rir_from_source() {
-        let multi_rir_response = r#"
+        let multi_rir_response = r"
 as-block: AS137530 - AS138553
 descr: APNIC ASN block
 source: APNIC
@@ -421,7 +450,7 @@ source: APNIC
 aut-num: AS3333
 as-name: RIPE-NCC-AS
 source: RIPE
-        "#;
+        ";
         
         let rirs = detect_rir_from_source(multi_rir_response);
         assert!(rirs.contains(&"apnic"));
@@ -430,13 +459,13 @@ source: RIPE
 
     #[test]
     fn test_split_response_by_source() {
-        let multi_rir_response = r#"
+        let multi_rir_response = r"
 as-block: AS137530 - AS138553
 source: APNIC
 
 aut-num: AS3333  
 source: RIPE
-        "#;
+        ";
         
         let blocks = split_response_by_source(multi_rir_response);
         assert_eq!(blocks.len(), 2);

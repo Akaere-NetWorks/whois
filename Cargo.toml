@@ -28,6 +28,11 @@ base64 = "0.21"
 default = ["images"]
 images = ["viuer"]
 
+[lints.clippy]
+all = { level = "deny", priority = 10 }
+pedantic = { level = "warn", priority = 3 }
+redundant_clone = { level = "deny", priority = 9 }
+
 [profile.release]
 lto = true
 opt-level = "z"

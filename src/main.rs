@@ -1,9 +1,10 @@
 use anyhow::Result;
-use colored::*;
+use colored::Colorize;
 use clap::Parser;
 
-use whois_cli::{Cli, WhoisQuery, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response, MarkdownRenderer};
+use whois_cli::{Cli, WhoisQuery, QueryOptions, OutputColorizer, ColorScheme, RirHyperlinkProcessor, is_rir_response, MarkdownRenderer};
 
+#[expect(clippy::unnecessary_wraps, reason = "anyhow idiom: main() -> Result<()>")]
 fn main() -> Result<()> {
     let args = Cli::parse();
     
@@ -30,18 +31,20 @@ fn main() -> Result<()> {
         None
     };
 
+    // Build query options from CLI arguments
+    let options = QueryOptions {
+        use_dn42: args.use_dn42(),
+        use_bgptools: args.use_bgptools(),
+        explicit_server: args.server.clone(),
+        port: args.port,
+        use_server_color: args.use_server_color(),
+        enable_markdown: args.use_markdown(),
+        enable_images: args.use_images(),
+        preferred_color_scheme: preferred_scheme.map(String::from),
+    };
+
     // Perform the query with enhanced protocol (v1.1) by default
-    let result = match query_handler.query_with_enhanced_protocol(
-        &args.domain,
-        args.use_dn42(),
-        args.use_bgptools(),
-        args.use_server_color(),
-        args.use_markdown(),
-        args.use_images(),
-        args.server.as_deref(),
-        args.port,
-        preferred_scheme,
-    ) {
+    let result = match query_handler.query_with_enhanced_protocol(&args.domain, &options) {
         Ok(result) => result,
         Err(err) => {
             eprintln!("{}: {}", "Query failed".bright_red(), err);
@@ -57,7 +60,10 @@ fn main() -> Result<()> {
     }
     
     // Handle output
-    if !result.response.trim().is_empty() {
+    if result.response.trim().is_empty() {
+        eprintln!("{}", "Empty response received. Please check if your query is correct.".bright_red());
+        std::process::exit(1);
+    } else {
         let mut output = result.response.clone();
         let mut is_markdown_content = false;
         
@@ -104,10 +110,7 @@ fn main() -> Result<()> {
             println!("{}", "Using server-provided coloring".bright_cyan());
         }
         
-        println!("{}", output);
+        println!("{output}");
         Ok(())
-    } else {
-        eprintln!("{}", "Empty response received. Please check if your query is correct.".bright_red());
-        std::process::exit(1);
     }
 }
