@@ -55,6 +55,12 @@ example.com\r\n
 example.com\r\n
 ```
 
+**Wire Format (v1.1 Enhanced Query):**
+
+![WHOIS-COLOR v1.1 enhanced query wire format](https://kroki.pysio.online/bytefield/svg/eNqtkk9PwjAYh-98imZcmLEGBGUs8UDwHxFcAgdMjIeyvR3Tbq1tEYjhu7uyzeAmiSS2t_Z5-z6_to0AKJrzNSgsQGLJV-jcsWsNs8yAahwTGUYJauVr6iPERGup0Ker9IYBsubEfwslXyYB9jnj0q3T3bC2dm1XlPHuAkiQtkhIDGkxjRhDVt1vgjPvGXSPVCBQMb5JcMwskR-ELaFMOhTaFdKXjFbOpBdB0GuWyPclyE2le8fv0lYeSZIVTu8MWU94du8Np3jgjbyJhZ5LGZUg6c21ty_2fpFrQBOxAEr7yl9ADFcyEmDILGLBluHBZHRrqF28HMoaJrDW5j1_Nx73Jw_X3uzxkPTlkdJaLqu2nX-SHY77dzfTQ6qdI1VFEp6-irBi2_2rbQ6FRCCLBEGkI54QhgrbE5RZKtTgItuzrZ_BYE1iweDM57HpkP244584Z7TmsV37AjplLuQ=)
+
+Each optional `X-WHOIS-*` header occupies its own line (`Header-Name: value\r\n`); the client omits any header the server didn't advertise support for in the capability response. The block ends with the plain WHOIS query line, itself terminated by `CRLF`. Diagram rendered via a self-hosted [Kroki](https://kroki.pysio.online/) instance using the [Bytefield](https://kroki.io/#bytefield) diagram type.
+
 ### 3. Response Processing
 
 **v1.1 Enhanced Response Processing:**
